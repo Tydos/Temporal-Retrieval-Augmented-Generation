@@ -1,0 +1,10 @@
+INFO:numexpr.utils:NumExpr defaulting to 12 threads.
+INFO:datasets:TensorFlow version 2.19.0 available.
+INFO:datasets:JAX version 0.7.2 available.
+Traceback (most recent call last):
+  File "/content/TimeAwareRAG_Final/src/mrag_integration.py", line 313, in <module>
+    main()
+  File "/content/TimeAwareRAG_Final/src/mrag_integration.py", line 257, in main
+    base_evaluator = ChroniclingQAEvaluator(config)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: ChroniclingQAEvaluator.__init__() takes 1 positional argument but 2 were given

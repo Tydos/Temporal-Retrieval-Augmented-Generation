@@ -1,0 +1,67 @@
+# Time-Aware RAG Configuration
+project:
+  name: "time_aware_rag"
+  seed: 42
+  output_dir: "outputs"
+  log_level: "INFO"
+
+# Model configurations
+models:
+  base_contriever:
+    name: "facebook/contriever-msmarco"  # Exact notebook model
+    cache_dir: "./models/cache"
+  
+  t5_generator:
+    name: "valhalla/t5-base-qg-hl"
+    cache_dir: "./models/cache"
+  
+  time_aware_contriever:
+    output_dir: "./contriever_finetuned_NEW_20k"
+    save_steps: 500
+    eval_steps: 500
+
+# Training configurations
+training:
+  batch_size: 16
+  gradient_accumulation_steps: 2
+  learning_rate: 2e-5
+  num_epochs: 3
+  warmup_steps: 500
+  max_length: 512
+  fp16: true
+  dataloader_num_workers: 4
+
+# Data configurations
+data:
+  chronicling_qa:
+    path: "./data/chroniclingqa"
+    subset_path: "./data/chroniclingqa_time_subset"
+  
+  temprag_eval:
+    path: "./data/temprageval"
+    atlas_corpus: "./data/atlas_2021"
+  
+  generated_questions:
+    output_path: "./data/generated_questions"
+    num_questions_per_passage: 5
+    
+  fineweb:
+    dataset_name: "HuggingFaceFW/fineweb-edu"
+    config_name: "sample-10BT"
+    split: "train"
+    sample_size: 500000  # Full FineWeb sample as in original notebook
+    max_passage_chars: 1000
+    output_path: "./data/fineweb"
+
+# Evaluation configurations
+evaluation:
+  metrics: ["accuracy", "f1", "precision", "recall", "mrr", "ndcg@10"]
+  batch_size: 32
+  top_k: [1, 5, 10, 20]
+
+# MRAG configurations
+mrag:
+  num_hops: 2
+  retrieval_top_k: 20
+  fusion_method: "weighted_sum"
+  weights: [0.7, 0.3]  # Base retriever, time-aware retriever
