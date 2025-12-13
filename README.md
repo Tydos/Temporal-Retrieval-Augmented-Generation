@@ -1,196 +1,215 @@
 # Time-Aware RAG: Temporal Question Answering with Fine-tuned Contriever
 
-A comprehensive research project implementing time-aware Retrieval-Augmented Generation (RAG) using fine-tuned Contriever models. This system generates temporal questions with T5, fine-tunes Contriever for temporal awareness, and evaluates performance using multi-hop retrieval (MRAG) on ChroniclingQA and TempRAGEval datasets.
+A comprehensive research project implementing time-aware Retrieval-Augmented Generation (RAG) using fine-tuned Contriever models. This system generates temporal questions with T5, fine-tunes Contriever for temporal awareness, and evaluates performance using multi-hop retrieval (MRAG) on ChroniclingQA and SQuAD datasets.
 
-## 🎯 Project Overview
+## Project overview
 
-### Objectives
-- **Fine-tune Contriever** on T5-generated temporal questions
-- **Compare performance** between base and time-aware models
-- **Implement MRAG** (Multi-hop RAG) for enhanced retrieval
-- **Evaluate comprehensively** on ChroniclingQA and TempRAGEval datasets
+Objectives
+- Fine-tune Contriever on T5-generated temporal questions
+- Compare base and time-aware models
+- Implement MRAG (multi-hop retrieval) and evaluate its benefit
+- Evaluate on T5-generated in-domain test set, ChroniclingQA (out-of-domain), and SQuAD (temporal subset)
 
-### Key Components
-1. **T5 Question Generation** - Generates temporal-aware questions from passages
-2. **Time-Aware Contriever Training** - Fine-tunes base Contriever with temporal attention
-3. **ChroniclingQA Evaluation** - Tests on full dataset and temporal subset
-4. **MRAG Integration** - Multi-hop retrieval combining both models
-5. **TempRAGEval Testing** - Evaluation on Atlas 2021 corpus
+Key components
+- T5 question generation (in-domain sample generation)
+- Time-aware Contriever training (temporal embeddings)
+- MRAG multi-hop retrieval and fusion
+- Evaluation scripts for ChroniclingQA, MRAG, and SQuAD-filtered runs
 
-## 📋 Requirements
+## Requirements
 
-### System Requirements
-- **Python**: 3.8 or higher
-- **RAM**: 16GB+ recommended
-- **GPU**: CUDA-compatible GPU recommended (optional)
-- **Storage**: 10GB+ free space
+System
+- Python 3.8+
+- 16GB+ RAM recommended
+- GPU with CUDA recommended for training
 
-### Dependencies
-All dependencies are listed in `requirements.txt`:
+Dependencies
+All Python dependencies are listed in `requirements.txt`. Install with:
+
 ```bash
-torch>=2.0.0
-transformers>=4.30.0
-datasets>=2.14.0
-sentence-transformers>=2.2.0
-faiss-cpu>=1.7.4
-pandas>=2.0.0
-numpy>=1.24.0
-scikit-learn>=1.3.0
-matplotlib>=3.7.0
+pip install -r requirements.txt
 ```
 
-### Dataset Requirements
-The pipeline automatically downloads and processes the required datasets:
+## How to run it?
 
-1. **FineWeb-edu** (500K passages): Large-scale web corpus for training temporal embeddings
-2. **ChroniclingQA**: Historical newspaper question answering dataset
-3. **TempRAGEval**: Temporal reasoning evaluation dataset
-4. **Atlas 2021**: Knowledge corpus for retrieval evaluation
+Make scripts executable and run the pipeline or the step-by-step scripts in `scripts/`.
 
-**Note**: The setup script will download approximately 2-3GB of data. FineWeb processing takes 10-30 minutes depending on internet speed.
+Examples — two ways to run
 
-## 🚀 Quick Start
-
-### Option 1: Complete Pipeline (Recommended)
-Run the entire experiment end-to-end:
+1) Run the full pipeline with the wrapper script (recommended for end-to-end reproducibility):
 
 ```bash
-# Make scripts executable
-chmod +x scripts/*.sh
-
-# Run complete pipeline (takes 2-4 hours)
+chmod +x scripts/run_complete_pipeline.sh
 ./scripts/run_complete_pipeline.sh
 ```
 
-### Option 2: Step-by-Step Execution
+2) Run the pipeline step-by-step by executing scripts `01` through `06` manually (order matters):
 
 ```bash
-# Step 1: Setup environment
-./scripts/01_setup_environment.sh
+chmod +x scripts/*.sh
+./scripts/01_setup_environment.sh    # prepares FineWeb and required dependencies (this step is required)
+./scripts/02_generate_questions.sh  # T5 question generation -> data/generated_questions/
+./scripts/03_train_contriever.sh    # train time-aware Contriever (run if comparing base vs time-aware)
+./scripts/05_mrag_caqa_eval.sh      # MRAG integration and CAQA/ChroniclingQA MRAG evaluation (required; must run before SQuAD runs)
+./scripts/04_evaluate_chroniclingqa.sh  # T5 in-domain (if available) + ChroniclingQA OOD evaluation
+./scripts/06_mrag_squad_eval.sh     # SQuAD temporal-filtered evaluation + MRAG (runs after MRAG CAQA)
+```
 
-# Step 2: Generate temporal questions
+Notes
+- FineWeb preparation (`01_setup_environment.sh`) is required for this pipeline; do not skip it — the system depends on `data/fineweb/fineweb_passages.json` and the generated indices.
+- MRAG CAQA step (`05_mrag_caqa_eval.sh`) is mandatory and must be executed before the SQuAD MRAG evaluation.
+
+## Exact script -> code mapping (what each numbered script does)
+
+- `scripts/01_setup_environment.sh`
+  - Installs Python deps, sets up directories, and (by default) runs `src/fineweb_loader.py` to prepare FineWeb passages.
+
+- `scripts/02_generate_questions.sh` -> `src/question_generation.py`
+  - Uses a T5 generator to produce temporal question-passage pairs and writes `data/generated_questions/sample_generated_questions.json`.
+  - If `data/fineweb/fineweb_passages.json` exists, it samples passages from FineWeb; otherwise it falls back to a small set of hard-coded example passages.
+
+- `scripts/03_train_contriever.sh` -> `src/contriever_training.py`
+  - Fine-tunes a time-aware Contriever and saves to `contriever_finetuned_NEW_20k/` or `models/time_aware_contriever/` depending on configuration.
+  - If not run, evaluation scripts will fall back to the base Contriever model.
+
+- `scripts/04_evaluate_chroniclingqa.sh` -> `src/chroniclingqa_eval.py`
+  - Runs two main evaluations:
+    1. T5 in-domain test set evaluation (if the T5 test mapping is found) and
+    2. ChroniclingQA (out-of-domain) evaluation using the `Bhawna/ChroniclingAmericaQA` dataset via `datasets`.
+  - Produces `outputs/chroniclingqa_results.json` and `outputs/chroniclingqa_results.csv` and optional plots.
+  - Important: by default `load_t5_test_data()` expects `data/fineweb/fineweb_passages.json` to map `sample_{id}` passage ids to original passages. If FineWeb is not available, T5 evaluation may be skipped unless the code uses the generated file directly (see Recommendations).
+
+- `scripts/05_mrag_caqa_eval.sh` -> `src/mrag_integration.py`
+  - Runs MRAG integration and evaluation on ChroniclingQA/CAQA-style runs. Uses precomputed window embeddings and optimized MaxSim reranking.
+
+- `scripts/06_mrag_squad_eval.sh` -> `src/squad_time_filter_eval.py`
+  - Loads SQuAD validation, filters for temporal questions (year regex and 'when' filters), builds indices, and evaluates four configurations: base, base+MRAG, time-aware, time-aware+MRAG.
+  - Output: `outputs/archivalqa_filtered_results.json` (and console summary). There may also be `outputs/squad_filtered_results.json` from prior runs.
+
+<!-- 'Run the full pipeline' merged into Quick start above -->
+
+## Results (summary drawn from `outputs/` at time of update)
+
+I read the available result files in `outputs/` to produce this concise summary. The raw JSON files live in `outputs/`.
+
+1) ChroniclingQA (T5 in-domain summary)
+- Source: `outputs/chroniclingqa_results.json`
+- Representative (selected keys):
+  - T5 In-Domain Full [BASE]: hit@1 = 0.784, hit@5 = 0.87433, hit@10 = 0.9
+  - T5 In-Domain Full [TIMEAWARE]: hit@1 = 0.849, hit@5 = 0.92233, hit@10 = 0.94233
+
+2) ChroniclingQA (CAQA-style / out-of-domain)
+- Source: `outputs/chroniclingqa_results.json`
+  - CAQA Out-of-Domain Full [BASE]: hit@1 = 0.47816, hit@5 = 0.65622, hit@10 = 0.71648
+  - CAQA Out-of-Domain Full [TIMEAWARE]: hit@1 = 0.50355, hit@5 = 0.67994, hit@10 = 0.73962
+
+3) MRAG evaluation
+- Source: `outputs/mrag_eval_results_fast.json` (CAQA+MRAG implementation)
+  - CAQA+MRAG (base / time-aware variants): see the Results table below for Hit@K and MRR values drawn from this file.
+
+4) SQuAD-filtered (temporal) + MRAG
+- Source: `outputs/squad_filtered_results.json` or `outputs/archivalqa_filtered_results.json`
+  - base_only: hit@1 = 0.717, hit@5 = 0.921
+  - mrag_base: hit@1 = 0.783, hit@5 = 0.943
+  - mrag_time_aware: hit@1 = 0.785, hit@5 = 0.942
+
+Full raw outputs (files present)
+- `outputs/chroniclingqa_results.json` — ChroniclingQA and CAQA-style metrics
+- `outputs/chroniclingqa_results.csv` — CSV of ChroniclingQA results
+- `outputs/mrag_eval_results_fast.json` — CAQA+MRAG (fast) evaluation
+- `outputs/squad_filtered_results.json` — SQuAD-filtered evaluation
+
+If you want these numbers presented as plots embedded into the README, I can generate PNGs from the JSON and add them under `outputs/` and reference them here.
+
+### Detailed results (full outputs)
+
+Below are full metric tables taken directly from the JSON output files in `outputs/`. These include Hit@K, MRR@K and Recall@K where available — no metrics omitted.
+
+#### ChroniclingQA results (`outputs/chroniclingqa_results.json`)
+
+Below are the T5 in-domain ChroniclingQA results split into Full and Year-subset tables.
+
+T5 In-Domain — Full
+
+| Variant | Hit@1 | Hit@5 | Hit@10 | Hit@20 | MRR@1 | MRR@5 | MRR@10 | MRR@20 | Recall@1 | Recall@5 | Recall@10 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| base | 0.78400 | 0.87433 | 0.90000 | 0.92033 | 0.78400 | 0.81966 | 0.82313 | 0.82456 | 0.78400 | 0.87433 | 0.90000 |
+| timeaware | **0.84900** | **0.92233** | **0.94233** | **0.95600** | **0.84900** | **0.87926** | **0.88185** | **0.88283** | **0.84900** | **0.92233** | **0.94233** |
+
+T5 In-Domain — Year-subset
+
+| Variant | Hit@1 | Hit@5 | Hit@10 | Hit@20 | MRR@1 | MRR@5 | MRR@10 | MRR@20 | Recall@1 | Recall@5 | Recall@10 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| base | 0.63895 | 0.75862 | 0.79716 | 0.83976 | 0.63895 | 0.68310 | 0.68814 | 0.69097 | 0.63895 | 0.75862 | 0.79716 |
+| timeaware | **0.76065** | **0.87221** | **0.90872** | **0.92901** | **0.76065** | **0.80510** | **0.81005** | **0.81150** | **0.76065** | **0.87221** | **0.90872** |
+
+#### CAQA + MRAG results (`outputs/mrag_eval_results_fast.json`)
+
+| Eval key | Hit@1 | Hit@5 | Hit@10 | Hit@20 | Hit@50 | MRR@1 | MRR@5 | MRR@10 | MRR@20 | MRR@50 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| base_only | 0.40361 | 0.57178 | 0.63823 | 0.70057 | 0.78097 | 0.40361 | 0.46812 | 0.47692 | 0.48115 | 0.48373 |
+| time_aware_only | 0.47826 | 0.66694 | 0.71452 | 0.77933 | 0.83347 | 0.47826 | 0.55127 | 0.55782 | 0.56226 | 0.56409 |
+| mrag_base | 0.57260 | 0.73503 | 0.76784 | 0.79245 | 0.80968 | 0.57260 | 0.63749 | 0.64197 | 0.64376 | 0.64435 |
+| mrag_time_aware | **0.59147** | **0.75308** | **0.79327** | **0.82445** | **0.84660** | **0.59147** | **0.65537** | **0.66107** | **0.66341** | **0.66410** |
+
+#### SQuAD-filtered results (`outputs/squad_filtered_results.json`)
+
+| Eval key | Hit@1 | Hit@5 | Hit@10 | Hit@20 | MRR@1 | MRR@5 | MRR@10 | MRR@20 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| base_only | 0.71700 | 0.92100 | 0.95400 | 0.97200 | 0.71700 | 0.79925 | 0.80381 | 0.80508 |
+| mrag_base | 0.78300 | **0.94300** | 0.95900 | 0.97500 | 0.78300 | 0.84748 | 0.84977 | 0.85096 |
+| time_aware_only | 0.72600 | 0.92600 | 0.95700 | **0.98400** | 0.72600 | 0.80647 | 0.81078 | 0.81270 |
+| mrag_time_aware | **0.78500** | 0.94200 | **0.96400** | 0.97800 | **0.78500** | **0.85092** | **0.85385** | **0.85489** |
+
+Raw JSON files used to produce these tables are included in `outputs/`:
+
+- `outputs/chroniclingqa_results.json`
+- `outputs/mrag_eval_results_fast.json` (CAQA+MRAG implementation)
+- `outputs/squad_filtered_results.json`
+
+## Reproducibility 
+
+If you only want to run T5 test set (in-domain), ChroniclingQA (OOD), and SQuAD (temporal)+MRAG evaluations, the minimal sequence is:
+
+1. Install dependencies (skip FineWeb download manually if you prefer):
+```bash
+pip install -r requirements.txt
+# optionally skip the FineWeb step in scripts/01_setup_environment.sh
+```
+
+2. Generate T5 questions (uses fallback samples if FineWeb is not present):
+```bash
 ./scripts/02_generate_questions.sh
-
-# Step 3: Train time-aware Contriever
-./scripts/03_train_contriever.sh
-
-# Step 4: Evaluate on ChroniclingQA
-./scripts/04_evaluate_chroniclingqa.sh
-
-# Step 5: Run MRAG and TempRAGEval
-./scripts/05_mrag_temprageval.sh
-
-# Step 6: Generate final report
-./scripts/06_generate_report.sh
 ```
 
-## 📊 Expected Results
-
-After running the complete pipeline, you'll get:
-
-### Performance Metrics
-- **MRR (Mean Reciprocal Rank)**
-- **Recall@1, Recall@5, Recall@10**
-- **Precision@K**
-
-### Comparison Results
-- **Base Contriever** vs **Time-Aware Contriever**
-- **Single-hop** vs **Multi-hop (MRAG)** retrieval
-- **Full dataset** vs **Temporal subset** performance
-
-### Output Files
-```
-outputs/
-├── chroniclingqa_results.json          # ChroniclingQA evaluation
-├── mrag_temprageval_results.json       # MRAG and TempRAGEval results
-├── comprehensive_evaluation_plots.png   # Performance visualizations
-├── complete_results_summary.csv        # All results in CSV format
-└── final_report/
-    ├── evaluation_report.md             # Comprehensive report
-    ├── summary_statistics.csv           # Summary statistics
-    └── improvements_analysis.json       # Performance improvements
-```
-
-## 📂 Project Structure
-
-```
-TimeAwareRAG_Final/
-├── configs/
-│   └── config.yaml                 # Configuration parameters
-├── data/
-│   ├── generated_questions/        # T5-generated temporal questions
-│   ├── chroniclingqa/             # ChroniclingQA dataset
-│   └── temprageval/               # TempRAGEval dataset
-├── models/
-│   ├── cache/                     # Model cache
-│   └── time_aware_contriever/     # Fine-tuned model
-├── outputs/                       # Evaluation results
-├── scripts/                       # Execution scripts
-├── src/
-│   ├── question_generation.py     # T5 question generation
-│   ├── contriever_training.py     # Model fine-tuning
-│   ├── chroniclingqa_eval.py      # ChroniclingQA evaluation
-│   └── mrag_integration.py        # MRAG and TempRAGEval
-├── logs/                          # Execution logs
-├── requirements.txt               # Dependencies
-└── README.md                      # This file
-```
-
-## ⚙️ Configuration
-
-Modify `configs/config.yaml` to customize:
-
-```yaml
-# Model settings
-models:
-  base_contriever:
-    name: "facebook/contriever"
-  
-# Training parameters
-training:
-  batch_size: 16
-  learning_rate: 2e-5
-  num_epochs: 3
-  
-# Evaluation settings  
-evaluation:
-  metrics: ["accuracy", "f1", "mrr", "ndcg@10"]
-  top_k: [1, 5, 10, 20]
-
-# MRAG configuration
-mrag:
-  num_hops: 2
-  fusion_method: "weighted_sum"
-  weights: [0.7, 0.3]
-```
-
-## 🔧 Advanced Usage
-
-### Custom Dataset Integration
-To use your own dataset:
-
-1. **Format your data** as JSON with required fields:
-```json
-[
-  {
-    "passage": "Your passage text",
-    "id": "unique_id",
-    "text": "passage content"
-  }
-]
-```
-
-2. **Update configuration** in `configs/config.yaml`
-3. **Modify data loading** in respective Python files
-
-### GPU/CPU Configuration
+3. (Optional) Train time-aware Contriever if you want time-aware comparisons:
 ```bash
-# For GPU usage
-export CUDA_VISIBLE_DEVICES=0
-
-# For CPU-only
-export CUDA_VISIBLE_DEVICES=""
+./scripts/03_train_contriever.sh
 ```
+
+4. Evaluate T5 in-domain and ChroniclingQA OOD:
+```bash
+./scripts/04_evaluate_chroniclingqa.sh
+```
+
+5. Evaluate SQuAD temporal subset + MRAG:
+```bash
+./scripts/06_mrag_squad_eval.sh
+```
+
+6. Optional: MRAG CAQA run (if you want a separate MRAG pass on ChroniclingQA):
+```bash
+./scripts/05_mrag_caqa_eval.sh
+```
+
+## Where the important files are
+
+- Generated questions (T5): `data/generated_questions/sample_generated_questions.json`
+- FineWeb (if downloaded): `data/fineweb/fineweb_passages.json`
+- Time-aware model (if trained): `contriever_finetuned_NEW_20k/` or `models/time_aware_contriever/`
+- Index: `contriever_mining_index_fineweb_20k/mining.index`
+- Outputs (evaluation results): `outputs/*.json`, `outputs/*.csv`, `outputs/*.png`
+
 
 ### Weights & Biases Integration
 ```bash
@@ -203,7 +222,7 @@ export WANDB_API_KEY="your_api_key"
 export REPORT_TO="wandb"
 ```
 
-## 📈 Monitoring Progress
+## Monitoring Progress
 
 ### Real-time Monitoring
 ```bash
@@ -223,7 +242,7 @@ cat outputs/chroniclingqa_results.json
 ls -la models/time_aware_contriever/
 ```
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -253,7 +272,7 @@ Check these logs for detailed error information:
 - `logs/chroniclingqa_evaluation.log`
 - `logs/mrag_temprageval.log`
 
-## 📚 Methodology
+## Methodology
 
 ### 1. Question Generation
 - Uses T5-base to generate temporal questions
@@ -267,72 +286,10 @@ Check these logs for detailed error information:
 
 ### 3. Evaluation Protocol
 - **ChroniclingQA**: Full dataset and temporal subset
-- **TempRAGEval**: Atlas 2021 corpus evaluation
+- **SQuAD**: Temporal subset evaluation using SQuAD validation split
 - **MRAG**: Multi-hop retrieval comparison
 
 ### 4. Metrics
 - **MRR**: Mean Reciprocal Rank
 - **Recall@K**: Retrieval recall at different K values
 - **Precision@K**: Retrieval precision
-
-## 🎓 For Graders
-
-### Reproducibility Checklist
-- ✅ **Environment Setup**: Automated via scripts
-- ✅ **Data Generation**: Deterministic with fixed seeds  
-- ✅ **Model Training**: Reproducible hyperparameters
-- ✅ **Evaluation**: Consistent metrics and protocols
-- ✅ **Results**: Comprehensive reports and plots
-
-### Key Files to Review
-1. **`scripts/run_complete_pipeline.sh`** - Complete execution
-2. **`outputs/final_report/evaluation_report.md`** - Main results
-3. **`configs/config.yaml`** - All parameters
-4. **`src/`** - Source implementations
-
-### Validation Commands
-```bash
-# Quick validation run (reduces epochs for speed)
-sed -i 's/num_epochs: 3/num_epochs: 1/' configs/config.yaml
-./scripts/run_complete_pipeline.sh
-
-# Check all outputs generated
-ls -la outputs/
-ls -la models/time_aware_contriever/
-```
-
-## 📜 Citation
-
-```bibtex
-@article{timeaware_rag_2024,
-  title={Time-Aware RAG: Temporal Question Answering with Fine-tuned Contriever},
-  author={Your Name},
-  journal={Research Project},
-  year={2024}
-}
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/improvement`)
-3. Commit changes (`git commit -am 'Add improvement'`)
-4. Push to branch (`git push origin feature/improvement`)
-5. Create Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-For questions or issues:
-1. Check the troubleshooting section above
-2. Review log files in `logs/` directory
-3. Open an issue with detailed error information
-
----
-
-**🎉 Ready to run your Time-Aware RAG experiment!**
-
-Execute `./scripts/run_complete_pipeline.sh` and check `outputs/final_report/evaluation_report.md` for comprehensive results.
